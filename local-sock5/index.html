@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节点转本地 SOCKS5 代理</title>
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  padding: 20px;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+.container {
+  max-width: 860px;
+  width: 100%;
+}
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #1a1a1a;
+}
+.subtitle {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 20px;
+}
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 6px;
+}
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea:focus { border-color: #4f9eff; }
+textarea::placeholder { color: #bbb; }
+textarea[readonly] { background: #fafafa; }
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.row label { margin-bottom: 0; white-space: nowrap; }
+input[type="number"] {
+  width: 100px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+input[type="number"]:focus { border-color: #4f9eff; }
+.btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-primary {
+  background: #4f9eff;
+  color: #fff;
+}
+.btn-primary:hover { background: #3a8af0; }
+.btn-default {
+  background: #e8e8e8;
+  color: #555;
+}
+.btn-default:hover { background: #dcdcdc; }
+.info {
+  font-size: 13px;
+  margin-top: 8px;
+  min-height: 20px;
+  line-height: 1.5;
+}
+.info.success { color: #27ae60; }
+.info.error { color: #e74c3c; }
+.info.warn { color: #e67e22; }
+.output-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.output-actions a {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #27ae60;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.output-actions a:hover { background: #219a52; }
+.drop-hint {
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  padding: 24px;
+  text-align: center;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 10px;
+}
+.drop-hint:hover { border-color: #4f9eff; background: #f8fbff; }
+.drop-hint.dragover { border-color: #4f9eff; background: #eef4ff; }
+.protocol-ref {
+  margin-top: 12px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+.protocol-ref summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  user-select: none;
+}
+.protocol-ref summary:hover { color: #4f9eff; }
+.protocol-ref table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.protocol-ref th, .protocol-ref td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+.protocol-ref th {
+  background: #f8f8f8;
+  font-weight: 600;
+  color: #444;
+  position: sticky;
+  top: 0;
+}
+.protocol-ref td:first-child {
+  font-family: monospace;
+  font-weight: 500;
+  white-space: nowrap;
+  color: #4f9eff;
+}
+.protocol-ref td:nth-child(2) {
+  white-space: nowrap;
+  color: #888;
+}
+.protocol-ref td:nth-child(3) {
+  color: #666;
+}
+.protocol-ref .proto-header {
+  background: #eef4ff;
+  font-weight: 600;
+}
+.protocol-ref .proto-header td {
+  color: #333;
+  font-family: inherit;
+}
+.field-required { color: #e74c3c; font-size: 11px; margin-left: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Clash 节点 → 本地 SOCKS5 代理</h1>
+  <p class="subtitle">将任意协议的节点转为多个本地 mixed 端口。不修改任何节点参数，原样保留。</p>
+
+  <div class="card">
+    <label>粘贴或拖入 Clash / Mihomo 格式 YAML</label>
+    <div class="drop-hint" id="dropHint">将 YAML 文件拖到此处，或直接在下方粘贴</div>
+    <textarea id="inputYAML" rows="8" placeholder="在此粘贴 YAML 内容..."></textarea>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label for="startPort">起始端口：</label>
+      <input type="number" id="startPort" min="1" max="65535" value="42000">
+      <button class="btn btn-primary" id="processButton">生成配置</button>
+      <button class="btn btn-default" id="clearButton">清空</button>
+    </div>
+    <div class="info" id="infoDiv"></div>
+  </div>
+
+  <div class="card">
+    <label>生成的配置</label>
+    <textarea id="outputYAML" rows="12" placeholder="点击「生成配置」后结果将显示在此处" readonly></textarea>
+    <div class="output-actions">
+      <a id="downloadLink" style="display:none">下载 config.yaml</a>
+      <button class="btn btn-default" id="copyButton" style="display:none">复制到剪贴板</button>
+    </div>
+  </div>
+
+  <div class="card protocol-ref">
+    <details>
+      <summary>📖 Mihomo 协议参数参考（点击展开）</summary>
+      <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+      <table>
+        <thead>
+          <tr><th>字段</th><th>适用协议</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr class="proto-header"><td colspan="3">✅ 通用字段（所有协议共有）</td></tr>
+          <tr><td>name</td><td>全部</td><td>节点名称<span class="field-required">必填</span></td></tr>
+          <tr><td>type</td><td>全部</td><td>协议类型：ss/vmess/vless/trojan/hysteria/hysteria2/tuic/snell/socks5/http/wireguard<span class="field-required">必填</span></td></tr>
+          <tr><td>server</td><td>全部</td><td>服务器地址<span class="field-required">必填</span></td></tr>
+          <tr><td>port</td><td>全部</td><td>服务器端口<span class="field-required">必填</span></td></tr>
+          <tr><td>udp</td><td>全部</td><td>启用 UDP 转发，默认 false</td></tr>
+          <tr><td>ip-version</td><td>全部</td><td>dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer</td></tr>
+          <tr><td>interface-name</td><td>全部</td><td>绑定到指定网卡</td></tr>
+          <tr><td>routing-mark</td><td>全部</td><td>Linux 路由标记</td></tr>
+          <tr><td>tfo</td><td>全部</td><td>TCP Fast Open</td></tr>
+          <tr><td>mptcp</td><td>全部</td><td>Multipath TCP</td></tr>
+          <tr><td>dialer-proxy</td><td>全部</td><td>链式代理（通过另一个节点连接）</td></tr>
+          <tr><td>smux</td><td>全部</td><td>多路复用配置（enabled/protocol/max-connections/min-streams/max-streams/padding）</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🔒 TLS 字段（vless/vmess/trojan/hysteria2/tuic）</td></tr>
+          <tr><td>tls</td><td>vless/vmess/trojan</td><td>启用 TLS</td></tr>
+          <tr><td>sni</td><td>vless/vmess/trojan/hy2/tuic</td><td>TLS SNI（服务器名称指示）</td></tr>
+          <tr><td>servername</td><td>vless/vmess/trojan</td><td>servername（与 sni 同义）</td></tr>
+          <tr><td>client-fingerprint</td><td>vless/vmess/trojan/tuic/ss</td><td>chrome/firefox/safari/ios/android/edge/360/qq/random</td></tr>
+          <tr><td>alpn</td><td>vless/vmess/trojan/hy2/tuic/hysteria</td><td>TLS ALPN 列表，如 ["h3","h2","http/1.1"]</td></tr>
+          <tr><td>skip-cert-verify</td><td>全部</td><td>跳过证书验证</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🌐 Reality 字段（适用于支持 Reality 的协议）</td></tr>
+          <tr><td>reality-opts</td><td>vless/vmess/trojan</td><td>Reality 配置块</td></tr>
+          <tr><td>reality-opts.public-key</td><td>vless/vmess/trojan</td><td>Reality 公钥</td></tr>
+          <tr><td>reality-opts.short-id</td><td>vless/vmess/trojan</td><td>Reality short ID</td></tr>
+          <tr><td>reality-opts.support-x25519mlkem768</td><td>vless/vmess/trojan</td><td>启用后量子密钥交换</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🌊 传输层 network（vless/vmess/trojan）</td></tr>
+          <tr><td>network</td><td>vless/vmess/trojan</td><td>ws/grpc/h2/http/xhttp（vless）</td></tr>
+          <tr><td>ws-opts</td><td>vless/vmess/trojan</td><td>WebSocket 配置块</td></tr>
+          <tr><td>ws-opts.path</td><td>vless/vmess/trojan</td><td>WebSocket 路径</td></tr>
+          <tr><td>ws-opts.headers</td><td>vless/vmess/trojan</td><td>WebSocket 自定义请求头</td></tr>
+          <tr><td>ws-opts.max-early-data</td><td>vless/vmess/trojan</td><td>WebSocket 最大 early data 大小</td></tr>
+          <tr><td>ws-opts.early-data-header-name</td><td>vless/vmess/trojan</td><td>early data 头部名称</td></tr>
+          <tr><td>ws-opts.v2ray-http-upgrade</td><td>vless/vmess/trojan</td><td>V2Ray HTTP Upgrade 模式</td></tr>
+          <tr><td>ws-opts.v2ray-http-upgrade-fast-open</td><td>vless/vmess/trojan</td><td>HTTP Upgrade Fast Open</td></tr>
+          <tr><td>grpc-opts</td><td>vless/vmess/trojan</td><td>gRPC 配置块</td></tr>
+          <tr><td>grpc-opts.grpc-service-name</td><td>vless/vmess/trojan</td><td>gRPC 服务名</td></tr>
+          <tr><td>grpc-opts.grpc-user-agent</td><td>vless/vmess/trojan</td><td>gRPC User-Agent</td></tr>
+          <tr><td>grpc-opts.ping-interval</td><td>vless/vmess/trojan</td><td>gRPC ping 间隔（秒）</td></tr>
+          <tr><td>grpc-opts.health-check-timeout</td><td>vless/vmess/trojan</td><td>gRPC 健康检查超时</td></tr>
+          <tr><td>grpc-opts.permit-without-stream</td><td>vless/vmess/trojan</td><td>gRPC 允许无 stream 连接</td></tr>
+          <tr><td>grpc-opts.initial-conn-window-size</td><td>vless/vmess/trojan</td><td>gRPC 初始连接窗口大小（字节）</td></tr>
+          <tr><td>grpc-opts.initial-stream-window-size</td><td>vless/vmess/trojan</td><td>gRPC 初始 stream 窗口大小（字节）</td></tr>
+          <tr><td>h2-opts</td><td>vless/vmess</td><td>HTTP/2 配置块（host/path）</td></tr>
+          <tr><td>http-opts</td><td>vless/vmess</td><td>HTTP 配置块（method/path/headers）</td></tr>
+          <tr><td>xhttp-opts</td><td>vless</td><td>XHTTP 配置块（vless 专用）</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🔷 VLESS 专用字段</td></tr>
+          <tr><td>uuid</td><td>vless</td><td>用户 ID<span class="field-required">必填</span></td></tr>
+          <tr><td>flow</td><td>vless</td><td>流控：xtls-rprx-vision</td></tr>
+          <tr><td>encryption</td><td>vless</td><td>进阶加密串，用于后量子/填充控制</td></tr>
+          <tr><td>packet-encoding</td><td>vless</td><td>UDP 编码：packetaddr/xudp</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🔶 VMess 专用字段</td></tr>
+          <tr><td>uuid</td><td>vmess</td><td>用户 ID<span class="field-required">必填</span></td></tr>
+          <tr><td>alterId</td><td>vmess</td><td>置为 0（现代服务器）</td></tr>
+          <tr><td>cipher</td><td>vmess</td><td>auto/none/zero/aes-128-gcm/chacha20-poly1305<span class="field-required">必填</span></td></tr>
+          <tr><td>packet-encoding</td><td>vmess</td><td>UDP 编码：packetaddr/xudp</td></tr>
+          <tr><td>global-padding</td><td>vmess</td><td>协议级随机填充</td></tr>
+          <tr><td>authenticated-length</td><td>vmess</td><td>加密长度块</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🔴 Trojan 专用字段</td></tr>
+          <tr><td>password</td><td>trojan</td><td>密码<span class="field-required">必填</span></td></tr>
+          <tr><td>ss-opts</td><td>trojan</td><td>Trojan-Go SS 二层加密块（enabled/method/password）</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🟢 Shadowsocks (ss) 专用字段</td></tr>
+          <tr><td>cipher</td><td>ss</td><td>加密方式（aes-128-gcm/chacha20-ietf-poly1305/2022-blake3 等）<span class="field-required">必填</span></td></tr>
+          <tr><td>password</td><td>ss</td><td>密码<span class="field-required">必填</span></td></tr>
+          <tr><td>udp-over-tcp</td><td>ss</td><td>UDP over TCP 模式</td></tr>
+          <tr><td>udp-over-tcp-version</td><td>ss</td><td>UDP over TCP 协议版本 1/2</td></tr>
+          <tr><td>plugin</td><td>ss</td><td>插件：obfs/v2ray-plugin/gost-plugin/shadow-tls/restls/kcptun</td></tr>
+          <tr><td>plugin-opts</td><td>ss</td><td>插件配置块</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🟣 Hysteria (v1) 专用字段</td></tr>
+          <tr><td>auth_str</td><td>hysteria</td><td>认证字符串</td></tr>
+          <tr><td>auth-str</td><td>hysteria</td><td>认证字符串（别名）</td></tr>
+          <tr><td>obfs</td><td>hysteria</td><td>混淆类型</td></tr>
+          <tr><td>protocol</td><td>hysteria</td><td>协议：udp/wechat-video/faketcp</td></tr>
+          <tr><td>up</td><td>hysteria/hy2</td><td>上行带宽，如 "100 Mbps"</td></tr>
+          <tr><td>down</td><td>hysteria/hy2</td><td>下行带宽，如 "500 Mbps"</td></tr>
+          <tr><td>recv-window</td><td>hysteria</td><td>接收窗口</td></tr>
+          <tr><td>conn-recv-window</td><td>hysteria</td><td>连接级接收窗口</td></tr>
+          <tr><td>streams</td><td>hysteria</td><td>并发 stream 数</td></tr>
+          <tr><td>fast-open</td><td>hysteria</td><td>快速打开</td></tr>
+
+          <tr class="proto-header"><td colspan="3">🔵 Hysteria2 (hy2) 专用字段</td></tr>
+          <tr><td>password</td><td>hysteria2</td><td>密码<span class="field-required">必填</span></td></tr>
+          <tr><td>obfs</td><td>hysteria2</td><td>混淆类型：salamander</td></tr>
+          <tr><td>obfs-password</td><td>hysteria2</td><td>混淆密码</td></tr>
+          <tr><td>ports</td><td>hysteria2</td><td>端口范围：如 "51000-53000"</td></tr>
+          <tr><td>ca</td><td>hysteria/hy2</td><td>CA 证书路径（绝对路径）</td></tr>
+          <tr><td>ca-str</td><td>hysteria/hy2</td><td>CA 证书内容字符串</td></tr>
+
+          <tr class="proto-header"><td colspan="3">⚪ TUIC 专用字段</td></tr>
+          <tr><td>uuid</td><td>tuic</td><td>用户 ID</td></tr>
+          <tr><td>password</td><td>tuic</td><td>密码</td></tr>
+          <tr><td>token</td><td>tuic</td><td>令牌（替代 uuid+password）</td></tr>
+          <tr><td>congestion-controller</td><td>tuic</td><td>拥塞控制：cubic/new_reno/bbr</td></tr>
+          <tr><td>disable-sni</td><td>tuic</td><td>禁用 SNI</td></tr>
+          <tr><td>udp-relay-mode</td><td>tuic</td><td>UDP 转发模式：native/quic</td></tr>
+          <tr><td>heartbeat-interval</td><td>tuic</td><td>心跳间隔（秒）</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+var KNOWN_FIELDS = {
+  common: ['server','port','udp','interface-name','routing-mark','ip-version','tfo','mptcp','dialer-proxy','smux'],
+  tls: ['tls','sni','servername','client-fingerprint','alpn','skip-cert-verify','fingerprint'],
+  reality: ['public-key','short-id','support-x25519mlkem768'],
+  transport: ['network','ws-opts','grpc-opts','h2-opts','http-opts','xhttp-opts'],
+  vless: ['uuid','flow','encryption','packet-encoding'],
+  vmess: ['uuid','alterId','cipher','packet-encoding','global-padding','authenticated-length'],
+  trojan: ['password','ss-opts'],
+  ss: ['cipher','password','plugin','plugin-opts','udp-over-tcp','udp-over-tcp-version'],
+  hysteria: ['auth_str','auth-str','obfs','protocol','up','down','recv-window','conn-recv-window','streams','fast-open','ca','ca-str'],
+  hysteria2: ['password','up','down','obfs','obfs-password','sni','skip-cert-verify','alpn','fingerprint','ports','ca','ca-str'],
+  tuic: ['uuid','password','token','congestion-controller','alpn','sni','disable-sni','udp-relay-mode','heartbeat-interval'],
+  wsOpts: ['path','headers','max-early-data','early-data-header-name','v2ray-http-upgrade','v2ray-http-upgrade-fast-open'],
+  grpcOpts: ['grpc-service-name','grpc-user-agent','ping-interval','health-check-timeout','permit-without-stream','initial-conn-window-size','initial-stream-window-size']
+};
+
+function getKnownFieldsForType(type) {
+  var fields = KNOWN_FIELDS.common.slice();
+  fields.push('name', 'type');
+  fields = fields.concat(KNOWN_FIELDS.tls, KNOWN_FIELDS.reality, KNOWN_FIELDS.transport);
+  switch (type) {
+    case 'vless': fields = fields.concat(KNOWN_FIELDS.vless); break;
+    case 'vmess': fields = fields.concat(KNOWN_FIELDS.vmess); break;
+    case 'trojan': fields = fields.concat(KNOWN_FIELDS.trojan); break;
+    case 'ss': fields = fields.concat(KNOWN_FIELDS.ss); break;
+    case 'hysteria': fields = fields.concat(KNOWN_FIELDS.hysteria); break;
+    case 'hysteria2': case 'hy2': fields = fields.concat(KNOWN_FIELDS.hysteria2); break;
+    case 'tuic': fields = fields.concat(KNOWN_FIELDS.tuic); break;
+  }
+  return fields;
+}
+
+function checkProxyFields(proxy) {
+  var issues = [];
+  var type = proxy.type;
+  if (!type) return issues;
+  var known = getKnownFieldsForType(type);
+  for (var key in proxy) {
+    if (!proxy.hasOwnProperty(key)) continue;
+    if (known.indexOf(key) !== -1) continue;
+    if (key === 'name') continue;
+    if (key.indexOf('-opts') !== -1 || key === 'smux' || key === 'reality-opts' || key === 'ech-opts') continue;
+    issues.push('「' + proxy.name + '」: 未知字段 "' + key + '"');
+  }
+  return issues;
+}
+
+var inputEl = document.getElementById('inputYAML');
+var startPortEl = document.getElementById('startPort');
+var processBtn = document.getElementById('processButton');
+var clearBtn = document.getElementById('clearButton');
+var outputEl = document.getElementById('outputYAML');
+var infoDiv = document.getElementById('infoDiv');
+var downloadLink = document.getElementById('downloadLink');
+var copyBtn = document.getElementById('copyButton');
+var dropHint = document.getElementById('dropHint');
+
+dropHint.addEventListener('dragover', function (e) { e.preventDefault(); this.classList.add('dragover'); });
+dropHint.addEventListener('dragleave', function () { this.classList.remove('dragover'); });
+dropHint.addEventListener('drop', function (e) {
+  e.preventDefault();
+  this.classList.remove('dragover');
+  var file = e.dataTransfer.files[0];
+  if (file) {
+    var reader = new FileReader();
+    reader.onload = function (event) { inputEl.value = event.target.result; };
+    reader.readAsText(file);
+  }
+});
+inputEl.addEventListener('dragover', function (e) { e.preventDefault(); });
+inputEl.addEventListener('drop', function (e) { e.preventDefault(); });
+
+processBtn.addEventListener('click', function () {
+  var inputYAML = inputEl.value.trim();
+  var startPort = parseInt(startPortEl.value) || 42000;
+
+  if (!inputYAML) {
+    infoDiv.className = 'info error';
+    infoDiv.textContent = '请先输入 YAML 内容';
+    return;
+  }
+
+  try {
+    var yamlData = jsyaml.load(inputYAML);
+    if (!yamlData || typeof yamlData !== 'object') {
+      throw new Error('无法解析为有效的 YAML 对象');
+    }
+    if (!Array.isArray(yamlData.proxies) || yamlData.proxies.length === 0) {
+      infoDiv.className = 'info error';
+      infoDiv.textContent = 'YAML 中未找到有效的 proxies 列表';
+      return;
+    }
+
+    var rawProxies = yamlData.proxies;
+    var numProxies = rawProxies.length;
+
+    var cleanedProxies = [];
+    var allWarnings = [];
+    var unknownFieldWarnings = [];
+
+    for (var i = 0; i < numProxies; i++) {
+      var p = rawProxies[i];
+
+      var clean = {};
+      for (var key in p) {
+        if (p.hasOwnProperty(key)) {
+          clean[key] = p[key];
+        }
+      }
+
+      if (!clean.name) {
+        allWarnings.push('第 ' + (i + 1) + ' 个节点缺少 name，已自动命名');
+        clean.name = 'unnamed-' + (i + 1);
+      }
+
+      cleanedProxies.push(clean);
+
+      var fieldIssues = checkProxyFields(p);
+      unknownFieldWarnings = unknownFieldWarnings.concat(fieldIssues);
+    }
+
+    var output = {
+      'allow-lan': true,
+      'dns': {
+        'enable': true,
+        'enhanced-mode': 'fake-ip',
+        'fake-ip-range': '198.18.0.1/16',
+        'default-nameserver': ['114.114.114.114'],
+        'nameserver': ['https://doh.pub/dns-query']
+      }
+    };
+
+    var listeners = [];
+    for (var i = 0; i < numProxies; i++) {
+      listeners.push({
+        name: 'mixed' + i,
+        type: 'mixed',
+        port: startPort + i,
+        proxy: cleanedProxies[i].name
+      });
+    }
+    output.listeners = listeners;
+    output.proxies = cleanedProxies;
+
+    var outputYAML = jsyaml.dump(output, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false,
+      quotingType: '"',
+      forceQuotes: false
+    });
+
+    outputEl.value = outputYAML;
+
+    var endPort = startPort + numProxies - 1;
+    var infoMsg = '节点数：' + numProxies + ' 个，端口：' + startPort + ' → ' + endPort;
+    infoDiv.className = 'info success';
+    infoDiv.textContent = infoMsg;
+
+    if (allWarnings.length > 0) {
+      infoDiv.className = 'info warn';
+      infoDiv.textContent = infoMsg + '。警告：' + allWarnings.join('；');
+    }
+
+    if (unknownFieldWarnings.length > 0) {
+      infoDiv.className = 'info warn';
+      infoDiv.textContent = infoMsg + '。注意：以下字段不在常见参数列表中（可能是新协议参数）：' + unknownFieldWarnings.slice(0,5).join('；') + (unknownFieldWarnings.length > 5 ? '...等' + unknownFieldWarnings.length + ' 条' : '');
+    }
+
+    var blob = new Blob([outputYAML], { type: 'text/yaml;charset=utf-8' });
+    if (downloadLink.href) URL.revokeObjectURL(downloadLink.href);
+    downloadLink.href = URL.createObjectURL(blob);
+    downloadLink.download = 'config.yaml';
+    downloadLink.style.display = 'inline-block';
+    copyBtn.style.display = 'inline-block';
+
+  } catch (e) {
+    infoDiv.className = 'info error';
+    infoDiv.textContent = '解析失败：' + e.message;
+  }
+});
+
+clearBtn.addEventListener('click', function () {
+  inputEl.value = '';
+  outputEl.value = '';
+  infoDiv.className = 'info';
+  infoDiv.textContent = '';
+  downloadLink.style.display = 'none';
+  copyBtn.style.display = 'none';
+});
+
+copyBtn.addEventListener('click', function () {
+  outputEl.select();
+  navigator.clipboard.writeText(outputEl.value).then(function () {
+    copyBtn.textContent = '已复制';
+    setTimeout(function () { copyBtn.textContent = '复制到剪贴板'; }, 2000);
+  }).catch(function () {
+    document.execCommand('copy');
+    copyBtn.textContent = '已复制';
+    setTimeout(function () { copyBtn.textContent = '复制到剪贴板'; }, 2000);
+  });
+});
+</script>
+</body>
+</html>
