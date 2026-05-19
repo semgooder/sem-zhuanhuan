@@ -202,9 +202,16 @@ input[type="number"]:focus { border-color: #4f9eff; }
   </div>
 
   <div class="card">
-    <div class="row">
+    <div class="row" style="margin-bottom:10px">
       <label for="startPort">起始端口：</label>
       <input type="number" id="startPort" min="1" max="65535" value="42000">
+      <label for="outputMode" style="margin-left:8px">输出模式：</label>
+      <select id="outputMode" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;outline:none">
+        <option value="full">完整配置（给 mihomo 内核运行）</option>
+        <option value="proxies">节点列表（给 v2rayN 导入使用）</option>
+      </select>
+    </div>
+    <div class="row">
       <button class="btn btn-primary" id="processButton">生成配置</button>
       <button class="btn btn-default" id="clearButton">清空</button>
     </div>
@@ -389,6 +396,7 @@ function checkProxyFields(proxy) {
 
 var inputEl = document.getElementById('inputYAML');
 var startPortEl = document.getElementById('startPort');
+var outputModeEl = document.getElementById('outputMode');
 var processBtn = document.getElementById('processButton');
 var clearBtn = document.getElementById('clearButton');
 var outputEl = document.getElementById('outputYAML');
@@ -461,42 +469,59 @@ processBtn.addEventListener('click', function () {
       unknownFieldWarnings = unknownFieldWarnings.concat(fieldIssues);
     }
 
-    var output = {
-      'allow-lan': true,
-      'dns': {
-        'enable': true,
-        'enhanced-mode': 'fake-ip',
-        'fake-ip-range': '198.18.0.1/16',
-        'default-nameserver': ['114.114.114.114'],
-        'nameserver': ['https://doh.pub/dns-query']
-      }
-    };
+    var outputYAML;
+    var mode = outputModeEl.value;
 
-    var listeners = [];
-    for (var i = 0; i < numProxies; i++) {
-      listeners.push({
-        name: 'mixed' + i,
-        type: 'mixed',
-        port: startPort + i,
-        proxy: cleanedProxies[i].name
+    if (mode === 'proxies') {
+      outputYAML = jsyaml.dump({ proxies: cleanedProxies }, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false
+      });
+    } else {
+      var output = {
+        'allow-lan': true,
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'fake-ip-range': '198.18.0.1/16',
+          'default-nameserver': ['114.114.114.114'],
+          'nameserver': ['https://doh.pub/dns-query']
+        }
+      };
+
+      var listeners = [];
+      for (var i = 0; i < numProxies; i++) {
+        listeners.push({
+          name: 'mixed' + i,
+          type: 'mixed',
+          port: startPort + i,
+          proxy: cleanedProxies[i].name
+        });
+      }
+      output.listeners = listeners;
+      output.proxies = cleanedProxies;
+
+      outputYAML = jsyaml.dump(output, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false,
+        quotingType: '"',
+        forceQuotes: false
       });
     }
-    output.listeners = listeners;
-    output.proxies = cleanedProxies;
-
-    var outputYAML = jsyaml.dump(output, {
-      indent: 2,
-      lineWidth: -1,
-      noRefs: true,
-      sortKeys: false,
-      quotingType: '"',
-      forceQuotes: false
-    });
 
     outputEl.value = outputYAML;
 
     var endPort = startPort + numProxies - 1;
-    var infoMsg = '节点数：' + numProxies + ' 个，端口：' + startPort + ' → ' + endPort;
+    var infoMsg;
+    if (mode === 'proxies') {
+      infoMsg = '节点数：' + numProxies + ' 个。在 v2rayN → 分组 → 导入Clash配置文件 即可看到所有节点';
+    } else {
+      infoMsg = '节点数：' + numProxies + ' 个，端口：' + startPort + ' → ' + endPort;
+    }
     infoDiv.className = 'info success';
     infoDiv.textContent = infoMsg;
 
@@ -513,7 +538,7 @@ processBtn.addEventListener('click', function () {
     var blob = new Blob([outputYAML], { type: 'text/yaml;charset=utf-8' });
     if (downloadLink.href) URL.revokeObjectURL(downloadLink.href);
     downloadLink.href = URL.createObjectURL(blob);
-    downloadLink.download = 'config.yaml';
+    downloadLink.download = mode === 'proxies' ? 'nodes.yaml' : 'config.yaml';
     downloadLink.style.display = 'inline-block';
     copyBtn.style.display = 'inline-block';
 
