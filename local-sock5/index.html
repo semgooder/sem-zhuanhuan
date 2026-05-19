@@ -480,6 +480,14 @@ processBtn.addEventListener('click', function () {
         sortKeys: false
       });
     } else {
+      var portedProxies = [];
+      for (var i = 0; i < numProxies; i++) {
+        var port = startPort + i;
+        var renamed = JSON.parse(JSON.stringify(cleanedProxies[i]));
+        renamed.name = cleanedProxies[i].name + '-' + port;
+        portedProxies.push(renamed);
+      }
+
       var output = {
         'allow-lan': true,
         'dns': {
@@ -495,14 +503,14 @@ processBtn.addEventListener('click', function () {
       for (var i = 0; i < numProxies; i++) {
         var port = startPort + i;
         listeners.push({
-          name: cleanedProxies[i].name + '-' + port,
+          name: portedProxies[i].name,
           type: 'mixed',
           port: port,
-          proxy: cleanedProxies[i].name
+          proxy: portedProxies[i].name
         });
       }
       output.listeners = listeners;
-      output.proxies = cleanedProxies;
+      output.proxies = portedProxies;
 
       outputYAML = jsyaml.dump(output, {
         indent: 2,
