@@ -193,12 +193,25 @@ input[type="number"]:focus { border-color: #4f9eff; }
 <body>
 <div class="container">
   <h1>Clash 节点 → 本地 SOCKS5 代理</h1>
-  <p class="subtitle">将任意协议的节点转为多个本地 mixed 端口。不修改任何节点参数，原样保留。</p>
+  <p class="subtitle">支持粘贴 YAML、拖入文件、或输入订阅链接自动抓取。不修改任何节点参数，原样保留。</p>
 
   <div class="card">
     <label>粘贴或拖入 Clash / Mihomo 格式 YAML</label>
     <div class="drop-hint" id="dropHint">将 YAML 文件拖到此处，或直接在下方粘贴</div>
     <textarea id="inputYAML" rows="8" placeholder="在此粘贴 YAML 内容..."></textarea>
+  </div>
+
+  <div class="card">
+    <label>订阅链接（自动抓取转换）</label>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input type="url" id="subUrl" placeholder="https://example.com/sub?token=xxx" style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;outline:none" value="">
+      <button class="btn btn-primary" id="fetchButton" style="white-space:nowrap">获取</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label style="font-size:12px;color:#999;white-space:nowrap;margin:0">CORS 代理：</label>
+      <input type="url" id="corsProxy" value="https://api.allorigins.win/raw?url=" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;outline:none;color:#888">
+    </div>
+    <div class="info" id="fetchInfo"></div>
   </div>
 
   <div class="card">
@@ -404,6 +417,101 @@ var infoDiv = document.getElementById('infoDiv');
 var downloadLink = document.getElementById('downloadLink');
 var copyBtn = document.getElementById('copyButton');
 var dropHint = document.getElementById('dropHint');
+var subUrlEl = document.getElementById('subUrl');
+var corsProxyEl = document.getElementById('corsProxy');
+var fetchBtn = document.getElementById('fetchButton');
+var fetchInfo = document.getElementById('fetchInfo');
+
+function decodeBase64(str) {
+  try {
+    var decoded = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    try { return decodeURIComponent(escape(decoded)); } catch(e) { return decoded; }
+  } catch(e) { return null; }
+}
+
+fetchBtn.addEventListener('click', function () {
+  var url = subUrlEl.value.trim();
+  if (!url) {
+    fetchInfo.className = 'info error';
+    fetchInfo.textContent = '请输入订阅链接';
+    return;
+  }
+
+  var proxy = corsProxyEl.value.trim();
+  var fetchUrl = proxy ? proxy + encodeURIComponent(url) : url;
+
+  fetchBtn.disabled = true;
+  fetchBtn.textContent = '获取中...';
+  fetchInfo.className = 'info';
+  fetchInfo.textContent = '正在抓取订阅内容...';
+
+  fetch(fetchUrl, {
+    headers: {
+      'User-Agent': 'mihomo.party/v1.9.5(clash.meta)'
+    }
+  }).then(function (resp) {
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return resp.text();
+  }).then(function (text) {
+    if (!text || text.length < 10) throw new Error('响应内容为空');
+
+    var parsed = false;
+
+    try {
+      var yamlData = jsyaml.load(text);
+      if (yamlData && typeof yamlData === 'object' && Array.isArray(yamlData.proxies) && yamlData.proxies.length > 0) {
+        inputEl.value = text;
+        fetchInfo.className = 'info success';
+        fetchInfo.textContent = '成功！已获取 ' + yamlData.proxies.length + ' 个节点';
+        parsed = true;
+      }
+    } catch(_) {}
+
+    if (!parsed) {
+      var base64Decoded = decodeBase64(text);
+      if (base64Decoded) {
+        try {
+          var yamlData = jsyaml.load(base64Decoded);
+          if (yamlData && typeof yamlData === 'object' && Array.isArray(yamlData.proxies) && yamlData.proxies.length > 0) {
+            inputEl.value = base64Decoded;
+            fetchInfo.className = 'info success';
+            fetchInfo.textContent = '成功（Base64 解码）！已获取 ' + yamlData.proxies.length + ' 个节点';
+            parsed = true;
+          }
+        } catch(_) {}
+      }
+    }
+
+    if (!parsed) {
+      if (text.indexOf('proxies:') !== -1) {
+        inputEl.value = text;
+        fetchInfo.className = 'info warn';
+        fetchInfo.textContent = '已填充内容，但未能解析 proxies 列表，请检查格式';
+      } else {
+        var base64Fallback = decodeBase64(text);
+        if (base64Fallback && base64Fallback.indexOf('proxies:') !== -1) {
+          inputEl.value = base64Fallback;
+          fetchInfo.className = 'info warn';
+          fetchInfo.textContent = '已通过 Base64 解码填充，请检查格式';
+        } else {
+          inputEl.value = text;
+          fetchInfo.className = 'info warn';
+          fetchInfo.textContent = '已填充原始内容，请手动检查格式';
+        }
+      }
+    }
+  }).catch(function (err) {
+    fetchInfo.className = 'info error';
+    fetchInfo.textContent = '抓取失败：' + err.message + '。可尝试更换 CORS 代理，或手动粘贴内容';
+  }).finally(function () {
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = '获取';
+  });
+});
+
+subUrlEl.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); fetchBtn.click(); }
+});
 
 dropHint.addEventListener('dragover', function (e) { e.preventDefault(); this.classList.add('dragover'); });
 dropHint.addEventListener('dragleave', function () { this.classList.remove('dragover'); });
